@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+
+import infernalis.cli
+
+cli = infernalis.cli.InfernalisDispatcher()
+
+cli.do_stuff()
