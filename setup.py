@@ -4,7 +4,7 @@ import os
 from setuptools import setup
 import tenzing
 
-packages = ['infernalis','infernalis/cli','infernalis/core','infernalis/session','infernalis/daemon']
+packages = ['infernalis','infernalis/session']
 package_dir = {p: 'src/' + p for p in packages}
 
 scripts = [os.path.join('scripts', f) for f in os.listdir('scripts') if not '~' in f and not '#' in f]
@@ -21,7 +21,6 @@ setup(name='infernalis',
       test_suite='tests',
       cmdclass = {'upload':tenzing.Upload},
       install_requires=[
-          'pexpect',
-          'calvin'
+          'pexpect'
       ]
 )
