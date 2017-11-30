@@ -1,0 +1,37 @@
+Session
+
+inputs:
+
+executable + arguments
+base prompt
+
+functions:
+
+start
+stop
+restart
+reload
+signal
+status
+uptime
+cmd
+
+
+cmd format:
+static:
+[
+{
+'send':'foo',
+'expect':'bar',
+'wait':5,
+'timeout':6,
+
+}
+]
+
+
+
+-Need to add support for startup stuff like logins.
+
+
+
