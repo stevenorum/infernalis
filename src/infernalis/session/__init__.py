@@ -8,6 +8,11 @@ import shlex
 import signal
 import time
 
+def ensureRE(s):
+    # if isinstance(s, str):
+    #     return re.compile(s)
+    return s
+
 class Session(object):
 
     def __init__(self, params, prompt_re, filter_output=True, ignore_tail_whitespace=True, quit_string='exit'):
@@ -31,19 +36,83 @@ class Session(object):
     def __exit__(self, exception_type, exception_value, traceback):
         self.__disconnect()
 
-    def __connect(self, force=False):
+    def __get_end_regex(self, end_regex=None):
+        end_regex = end_regex if end_regex else self.__prompt_re
+        if isinstance(end_regex, str):
+            return {ensureRE(end_regex):None}
+        elif isinstance(end_regex, dict):
+            return {ensureRE(k):end_regex[k] for k in end_regex}
+        elif isinstance(end_regex, list):
+            return {ensureRE(e):None for e in end_regex}
+
+    # def __read_raw(self, end_matcher, timeout=10, **kwargs):
+    #     if not self.__connection:
+    #         raise RuntimeError("Must connect first.")
+    #     buff = ""
+    #     while True:
+    #         buff = buff + self.__connection.read_nonblocking(size=1024, timeout=timeout).decode('utf-8')
+    #         if end_matcher.search(buff):
+    #             return buff
+
+    def __read_raw(self, end_matcher, timeout=None, **kwargs):
+        timeout = timeout if timeout else 10
+        if not self.__connection:
+            raise RuntimeError("Must connect first.")
+        buff = ""
+        while True:
+            try:
+                buff = buff + self.__connection.read_nonblocking(size=1024, timeout=timeout).decode('utf-8')
+                print("Buff: " + buff)
+                if end_matcher.search(buff):
+                    return buff
+            except pexpect.EOF:
+                print(buff)
+                return buff
+            except pexpect.TIMEOUT:
+                print(buff)
+                return buff
+
+
+            
+    def __process(self, handler, timeout=10, maxdepth=10, depth=0):
+        print('process called...')
+        patterns = list(handler.keys()) + [pexpect.EOF, pexpect.TIMEOUT]
+        # patterns = list(handler.keys())
+        index = self.__connection.expect(pattern=patterns, timeout=timeout)
+        print('Index: {}'.format(index))
+        if index >= len(handler):
+            print('EOF or timeout encountered')
+            return None
+        response = self.__connection.match.string
+        matched = patterns[index]
+        print('Matched: {} ({})'.format(matched, type(matched)))
+        print(self.__connection.match)
+        print(self.__connection.match.string)
+        # response = self.__read_raw(matched)
+        action = handler.get(matched)
+        if action and callable(action):
+            action = action(response)
+        if action:
+            self.__connection.sendline(action)
+            return response + self.__process(handler, timeout, depth = depth + 1)
+        else:
+            return response
+
+    def __connect(self, force=False, end_regex=None, **kwargs):
+        end_handler = self.__get_end_regex(end_regex)
         if not self.__connected() or force:
             self.__create_time = time.time()
             self.__connection = pexpect.spawn(self.__params)
-            patterns = [self.__prompt_re, pexpect.EOF, pexpect.TIMEOUT]
-            response = self.__connection.expect(pattern=patterns, timeout=10)
-            if response > 0:
-                self.__connection = None
-                raise RuntimeError("Unable to connect.")
-            else:
-                pass
+            self.__process(end_handler)
+            # patterns = list(end_handler.keys())
+            # response = self.__connection.expect(pattern=patterns, timeout=10)
+            # if response > 0:
+            #     self.__connection = None
+            #     raise RuntimeError("Unable to connect.")
+            # else:
+            #     pass
 
-    def __disconnect(self):
+    def __disconnect(self, **kwargs):
         if self.__connected():
             self.__connection.sendline(self.__quit_string)
             patterns = [pexpect.EOF, pexpect.TIMEOUT]
@@ -79,17 +148,17 @@ class Session(object):
     def _run(self, command, end_regex=None, **kwargs):
         self.__connection.sendline(command)
         output = self.__read(end_condition_regex=end_regex if end_regex else self.__prompt_re, **kwargs)
-        response re.sub(r'\A{}\r\n'.format(re.escape(command)), r'', self.__output_filter(output))
+        response = re.sub(r'\A{}\r\n'.format(re.escape(command)), r'', self.__output_filter(output))
         logging.debug(response)
         return response
 
     def _stop(self, **kwargs):
-        self.__disconnect()
+        self.__disconnect(**kwargs)
         logging.info("Session disconnected.")
         return True
 
     def _start(self, **kwargs):
-        self.__connect()
+        self.__connect(**kwargs)
         logging.info("Session connected.")
         return True
 
